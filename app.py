@@ -124,7 +124,7 @@ else:
     
     if selected_cust_id:
         # Lấy thông tin khách hàng được chọn
-        cust_info = high_risk_customers == selected_cust_id].iloc
+        cust_info = [high_risk_customers == selected_cust_id].iloc
         
         # Template Email mô phỏng
         email_content = f"""
