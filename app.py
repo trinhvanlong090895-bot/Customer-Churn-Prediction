@@ -226,11 +226,7 @@ else:
 
         if st.button("🚀 Gửi Email Giữ Chân"):
             st.success(f"Đã gửi ưu đãi thành công tới khách hàng {selected_cust_id}!")
-import streamlit as st
-import pandas as pd
-import numpy as np
-import pickle
-import plotly.express as px  # Thêm thư viện vẽ biểu đồ đẹp hơn
+
 
 # Cấu hình trang
 st.set_page_config(page_title="SoftBank Churn Prediction", layout="wide")
