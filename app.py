@@ -64,7 +64,7 @@ else:
     # 2. Xây dựng Logic Đề xuất Giải pháp (Recommendation Engine)
     # Hàm này sẽ gán các ưu đãi cụ thể của SoftBank dựa trên đặc điểm khách hàng
     def generate_softbank_offer(row):
-        offers =
+        offers =[]
         
         # Kịch bản A: Nhạy cảm về giá (Cước cao + Hợp đồng ngắn hạn)
         # -> Đề xuất chuyển xuống thương hiệu giá rẻ hơn của SoftBank
