@@ -47,7 +47,6 @@ if uploaded_file is not None:
     st.dataframe(df[df["Churn_Score"] > 0.7])
 
     st.bar_chart(df["Churn_Score"])
-#... (Code của bạn từ dòng 1 đến 49)
 
 # --- PHẦN 2: GIẢI PHÁP GIỮ CHÂN KHÁCH HÀNG (SOFTBANK RETENTION ACTION) ---
 st.markdown("---")
