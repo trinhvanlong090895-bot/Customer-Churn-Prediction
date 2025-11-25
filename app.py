@@ -47,8 +47,8 @@ if uploaded_file is not None:
     st.dataframe(df[df["Churn_Score"] > 0.7])
 
     st.bar_chart(df["Churn_Score"])
-import streamlit as st
-import pandas as pd
+
+
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
