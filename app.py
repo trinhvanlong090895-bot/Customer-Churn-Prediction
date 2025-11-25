@@ -54,7 +54,7 @@ st.write("Hệ thống tự động đề xuất giải pháp dựa trên hành 
 
 # 1. Lọc danh sách khách hàng rủi ro cao để xử lý
 # Ngưỡng 0.7 là khách hàng có xác suất rời mạng trên 70%
-high_risk_customers = df[df['Risk_Score'] > 0.7].copy()
+high_risk_customers = df[df['Customer_Churn_Probability'] > 0.7].copy()
 
 if high_risk_customers.empty:
     st.success("Tuyệt vời! Hiện tại không có khách hàng nào trong nhóm rủi ro cao.")
