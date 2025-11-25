@@ -229,6 +229,9 @@ else:
 # Install Streamlit if not already installed
 !pip install streamlit
 
+# Install Streamlit if not already installed
+!pip install streamlit
+
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
