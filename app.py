@@ -226,123 +226,173 @@ else:
 
         if st.button("🚀 Gửi Email Giữ Chân"):
             st.success(f"Đã gửi ưu đãi thành công tới khách hàng {selected_cust_id}!")
-# --- Hàm Mô phỏng Uplift Data và Plotting ---
-def generate_uplift_data(n_samples=1000):
-    """Mô phỏng dữ liệu Uplift Curve (giả định Uplift Score đã được tính toán)."""
-    np.random.seed(42)
-    # Mô phỏng Uplift Score (đã sắp xếp, với Persuadables ở top)
-    uplift_score = np.sort(np.random.rand(n_samples))[::-1]
+import streamlit as st
+import pandas as pd
+import numpy as np
+import pickle
+import plotly.express as px  # Thêm thư viện vẽ biểu đồ đẹp hơn
 
-    # Tạo Uplift tích lũy dựa trên giả định mô hình Uplift hoạt động
-    # Giả sử 20% đầu tiên là Persuadables và mang lại 80% tổng Uplift
-    persuadable_ratio = 0.20
+# Cấu hình trang
+st.set_page_config(page_title="SoftBank Churn Prediction", layout="wide")
 
-    # Mô phỏng tác động: cao cho 20% đầu, sau đó giảm dần
-    weighted_uplift = np.where(
-        uplift_score > np.percentile(uplift_score, 100 - (persuadable_ratio * 100)),
-        uplift_score * 5,  # Tác động lớn cho Persuadables
-        uplift_score * 0.1 # Tác động nhỏ cho các nhóm khác
-    )
+# --- PHẦN 1: TIÊU ĐỀ VÀ LOAD MODEL ---
+st.title("🤖 AI Customer Churn Prediction & Retention")
+st.markdown("**Dự án:** Ứng dụng AI dự báo và giữ chân khách hàng cho **SoftBank Corp.**")
 
-    cumulative_uplift = np.cumsum(weighted_uplift)
-    # Chuẩn hóa Uplift để dễ trực quan hóa
-    cumulative_uplift = cumulative_uplift / cumulative_uplift.max() * 100
+# Load model, scaler và feature_names
+# Lưu ý: Bạn cần đảm bảo file.pkl nằm cùng thư mục với file app.py
+try:
+    model = pickle.load(open("model.pkl", "rb"))
+    scaler = pickle.load(open("scaler.pkl", "rb"))
+    feature_names = pickle.load(open("feature_names.pkl", "rb"))
+except FileNotFoundError:
+    st.error("⚠️ Không tìm thấy file model.pkl, scaler.pkl hoặc feature_names.pkl. Vui lòng kiểm tra lại!")
+    st.stop()
 
-    return pd.DataFrame({
-        'Ranked_Population_Percent': np.linspace(0, 100, n_samples),
-        'Cumulative_Uplift_Percentage': cumulative_uplift
-    })
+# Upload file
+uploaded_file = st.file_uploader("📂 Tải file CSV dữ liệu khách hàng (Telco Customer Churn)", type=["csv"])
 
-def plot_uplift_curve(uplift_df, cutoff_percent):
-    """Trực quan hóa Uplift Curve và Cutoff Point.[15, 20]"""
-    fig, ax = plt.subplots(figsize=(10, 6))
+if uploaded_file is not None:
+    # Đọc dữ liệu
+    df = pd.read_csv(uploaded_file)
+    
+    # --- PHẦN 2: XỬ LÝ DỮ LIỆU & DỰ BÁO (PREDICTION ENGINE) ---
+    with st.spinner('Đang xử lý dữ liệu và chạy mô hình AI...'):
+        # 1. Xử lý dữ liệu thô (Data Preprocessing)
+        df_display = df.copy() # Giữ lại bản gốc để hiển thị
+        
+        # Xử lý TotalCharges (chuyển sang số)
+        df = pd.to_numeric(df, errors="coerce")
+        df = df.dropna()
+        
+        # One-Hot Encoding
+        df_processed = pd.get_dummies(df, drop_first=True)
+        
+        # Đồng bộ cột với model đã huấn luyện
+        missing_cols = set(feature_names) - set(df_processed.columns)
+        for c in missing_cols:
+            df_processed[c] = 0
+        df_processed = df_processed[feature_names] # Sắp xếp lại đúng thứ tự cột
+        
+        # Scale dữ liệu
+        X_scaled = scaler.transform(df_processed)
+        
+        # 2. Dự báo (Prediction)
+        # Lấy xác suất rời mạng (cột 1)
+        prediction_proba = model.predict_proba(X_scaled)[:, 1]
+        df_display["Churn_Probability"] = prediction_proba
+        
+        # Phân loại rủi ro
+        def categorize_risk(prob):
+            if prob > 0.7: return "Nguy cơ Cao 🔴"
+            elif prob > 0.4: return "Cảnh báo 🟡"
+            else: return "An toàn 🟢"
+            
+        df_display = df_display["Churn_Probability"].apply(categorize_risk)
 
-    # Đường cong Uplift Model
-    ax.plot(uplift_df['Ranked_Population_Percent'], uplift_df['Cumulative_Uplift_Percentage'],
-            label='Đường cong Mô hình Uplift (Giá trị Giữ chân)', color='#f63366', linewidth=3)
+    # --- PHẦN 3: HIỂN THỊ KẾT QUẢ (DASHBOARD) ---
+    
+    # Tạo Tabs để giao diện gọn gàng
+    tab1, tab2, tab3 = st.tabs()
 
-    # Đường cong ngẫu nhiên (Baseline)
-    ax.plot(uplift_df['Ranked_Population_Percent'], uplift_df['Ranked_Population_Percent'],
-            linestyle='--', color='gray', label='Chiến dịch Ngẫu nhiên (Baseline)')
+    with tab1:
+        st.subheader("Tổng quan rủi ro khách hàng")
+        
+        # KPI Metrics
+        col1, col2, col3 = st.columns(3)
+        high_risk_count = df_display[df_display["Churn_Probability"] > 0.7].shape
+        avg_risk = df_display["Churn_Probability"].mean() * 100
+        revenue_at_risk = df_display[df_display["Churn_Probability"] > 0.7]["MonthlyCharges"].sum()
 
-    # Điểm cắt (Cutoff Point)
-    ax.axvline(cutoff_percent, color='blue', linestyle=':', label=f'Điểm Cắt Can thiệp ({cutoff_percent}%)')
+        col1.metric("Khách hàng Rủi ro cao", f"{high_risk_count} người", delta_color="inverse")
+        col2.metric("Tỷ lệ rủi ro trung bình", f"{avg_risk:.1f}%")
+        col3.metric("Doanh thu đang bị đe dọa", f"¥{revenue_at_risk:,.0f}", "Tháng này")
 
-    # Highlight vùng Persuadables (nếu điểm cắt hợp lý)
-    if cutoff_percent > 0:
-        cutoff_index = int(len(uplift_df) * (cutoff_percent / 100))
-        max_uplift = uplift_df['Cumulative_Uplift_Percentage'].iloc[cutoff_index]
-        ax.plot(cutoff_percent, max_uplift, 'o', color='blue', markersize=8)
-        ax.annotate(f'{max_uplift:.1f}% Uplift',
-                    (cutoff_percent, max_uplift),
-                    textcoords="offset points",
-                    xytext=(5,-10),
-                    ha='left')
+        # Biểu đồ phân bố
+        fig = px.histogram(df_display, x="Churn_Probability", nbins=20, title="Phân bố xác suất rời mạng", color_discrete_sequence=)
+        st.plotly_chart(fig, use_container_width=True)
 
-    ax.set_xlabel('Tỷ lệ Dân số Mục tiêu được Nhắm đến (Theo Điểm Uplift Score, %)')
-    ax.set_ylabel('Uplift Tích lũy Chuẩn hóa (%)')
-    ax.set_title('Tối ưu hóa Can thiệp Giữ chân Khách hàng bằng Uplift Modeling')
-    ax.legend()
-    ax.grid(True)
-    st.pyplot(fig)
+        st.write("### Dữ liệu chi tiết:")
+        st.dataframe(df_display.sort_values(by="Churn_Probability", ascending=False).head(10))
 
-# --- Giao diện Streamlit cho Uplift/ROI ---
-st.header("2. Tối ưu hóa Chiến dịch Giữ chân (Uplift Modeling và ROI)")
+    # --- PHẦN 4: SOFTBANK ACTION CENTER (GIẢI PHÁP) ---
+    with tab2:
+        st.header("🛡️ Chiến lược Giữ chân Khách hàng (SoftBank Action Center)")
+        st.write("Hệ thống tự động đề xuất gói giải pháp dựa trên hành vi từng khách hàng.")
+        
+        # Lọc khách hàng rủi ro cao
+        high_risk_df = df_display[df_display["Churn_Probability"] > 0.7].copy()
+        
+        if high_risk_df.empty:
+            st.success("Tuyệt vời! Không có khách hàng rủi ro cao.")
+        else:
+            # Logic đề xuất giải pháp (Rule-based Recommendation)
+            def get_retention_offer(row):
+                offers =
+                # Rule 1: Nhạy cảm về giá (Cước cao + Hợp đồng ngắn) -> Đề xuất LINEMO/Y!mobile
+                if row['MonthlyCharges'] > 80 and row['Contract'] == 'Month-to-month':
+                    offers.append("📉 Chuyển đổi sang **LINEMO** (20GB) hoặc **Y!mobile**")
+                
+                # Rule 2: Dùng Fiber Optic -> Kích hoạt Ouchi Wari (Combo Điện/Net)
+                if row == 'Fiber optic':
+                    offers.append("🏠 Kích hoạt **Ouchi Wari** (Giảm giá Combo)")
+                
+                # Rule 3: Khách hàng lâu năm (> 2 năm) -> Tri ân
+                if row['tenure'] > 24:
+                    offers.append("💎 Nâng hạng **SoftBank Premium** + Vé xem bóng chày")
+                
+                # Rule 4: Không có TechSupport -> Tặng dịch vụ hỗ trợ
+                if row == 'No':
+                    offers.append("🔧 Tặng gói hỗ trợ kỹ thuật miễn phí 3 tháng")
+                
+                # Mặc định: Tặng điểm PayPay
+                offers.append("💰 Tặng 1,000 điểm **PayPay**")
+                
+                return " + ".join(offers)
 
-col1, col2 = st.columns(2)
+            high_risk_df = high_risk_df.apply(get_retention_offer, axis=1)
+            
+            # Hiển thị bảng hành động
+            st.dataframe(high_risk_df])
 
-with col1:
-    cutoff_percentage = st.slider("Chọn Điểm Cắt Dân số Mục tiêu (Target Population Cutoff %)",
-                                    0, 100, 20, step=5, help="Chọn tỷ lệ phần trăm dân số có Uplift Score cao nhất sẽ nhận được can thiệp giữ chân. Thường là 20% đầu tiên.")
+    # --- PHẦN 5: GENAI SIMULATION (SOẠN EMAIL) ---
+    with tab3:
+        st.header("📧 Soạn thảo Email Cá nhân hóa (GenAI Demo)")
+        
+        # Chọn khách hàng từ danh sách rủi ro
+        if not high_risk_df.empty:
+            selected_cust = st.selectbox("Chọn ID khách hàng để gửi ưu đãi:", high_risk_df.head(20))
+            
+            if selected_cust:
+                cust_data = high_risk_df == selected_cust].iloc
+                
+                # Template Email động
+                email_body = f"""
+                **To:** {cust_data}@softbank.ne.jp
+                **Subject:** 🎁 Món quà đặc biệt từ SoftBank dành riêng cho bạn!
+                
+                Kính gửi Quý khách hàng,
+                
+                Cảm ơn bạn đã đồng hành cùng SoftBank trong suốt **{cust_data['tenure']} tháng** qua.
+                Chúng tôi nhận thấy bạn đang sử dụng gói cước với mức phí khoảng **¥{cust_data['MonthlyCharges']}**.
+                
+                Để tri ân sự gắn bó của bạn, SoftBank trân trọng gửi tặng gói ưu đãi độc quyền:
+                
+                👉 **{cust_data}**
+                
+                Vui lòng truy cập ứng dụng **My SoftBank** hoặc liên kết ví **PayPay** để nhận ưu đãi ngay hôm nay.
+                
+                Trân trọng,
+                Đội ngũ Chăm sóc Khách hàng SoftBank Corp.
+                """
+                
+                st.info("Nội dung Email được tạo tự động:")
+                st.markdown(email_body)
+                
+                if st.button("🚀 Gửi Email Ngay"):
+                    st.success(f"Đã gửi ưu đãi thành công tới khách hàng {selected_cust}! Dữ liệu CRM đã cập nhật.")
+        else:
+            st.write("Không có khách hàng nào cần gửi email.")
 
-    # Input tài chính cho ROI
-    avg_clv = st.number_input("Giá trị trọn đời khách hàng (CLV) trung bình ($)", value=5000)
-    avg_intervention_cost = st.number_input("Chi phí can thiệp trung bình/khách hàng ($)", value=150)
-
-with col2:
-    # Mô phỏng dữ liệu Uplift
-    uplift_data = generate_uplift_data()
-    plot_uplift_curve(uplift_data, cutoff_percentage)
-
-# Tính toán ROI Mô phỏng (Đơn giản hóa cho mục đích minh họa)
-if cutoff_percentage > 0:
-    n_total_customers = 7043 # Giả định số lượng khách hàng trong dataset
-
-    # Giả định: Uplift Model tìm ra 20% Persuadables trong 20% dân số mục tiêu (persuadables chiếm 4% tổng dân số)
-    # Giả định: Tác động giữ chân thực tế (Uplift Rate) trong nhóm Persuadables là 20%
-    persuadable_ratio = 0.20
-    targeted_customers_count = int(n_total_customers * (cutoff_percentage / 100))
-
-    # Chỉ số giả định: Tỷ lệ khách hàng được giữ chân thực tế trong nhóm can thiệp (Persuadable Rate in Target Group)
-    simulated_retention_rate = (0.2 * (cutoff_percentage/100)) # 20% Uplift Rate giả định, nhân với tỷ lệ can thiệp
-
-    # Số khách hàng được giữ chân do Uplift Model
-    customers_retained_uplift = int(targeted_customers_count * (simulated_retention_rate))
-
-    # Lợi ích: Khách hàng được giữ chân * CLV
-    total_benefit = customers_retained_uplift * avg_clv
-
-    # Chi phí: Số khách hàng được can thiệp * Chi phí can thiệp
-    total_cost = targeted_customers_count * avg_intervention_cost
-
-    # ROI
-    net_financial_gain = total_benefit - total_cost
-
-    st.subheader("Bảng Dự kiến Lợi ích Tài chính và ROI")
-
-    st.markdown(f"""
-| **KPI Mô Phỏng** | **Giá trị** |
-|---|---|
-| Khách hàng mục tiêu được can thiệp (Cutoff Pop.) | {targeted_customers_count:,} |
-| Khách hàng được giữ chân hiệu quả (Uplift) | {customers_retained_uplift:,} |
-| Tổng Lợi ích tài chính (Gross Benefit) | ${total_benefit:,.2f} |
-| Tổng Chi phí Can thiệp | ${total_cost:,.2f} |
-| **Lợi ích Tài chính Ròng (Net Gain)** | **${net_financial_gain:,.2f}** |
-""")
-
-    st.markdown("""
-Việc tối ưu hóa bằng Uplift Modeling đảm bảo rằng nguồn lực ($150/khách hàng trong ví dụ này)
-chỉ được chi tiêu cho nhóm khách hàng có khả năng thay đổi quyết định lớn nhất.
-Nếu không có mô hình Uplift, một chiến dịch ngẫu nhiên sẽ lãng phí ngân sách
-cho nhóm Sure Things và có thể làm mất thêm khách hàng thuộc nhóm Do-not-Disturbs.
-""")
+else:
+    st.info("Vui lòng tải lên file CSV để bắt đầu phân tích.")
