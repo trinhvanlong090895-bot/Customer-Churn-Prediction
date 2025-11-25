@@ -106,7 +106,7 @@ else:
     with col1:
         st.subheader("📋 Danh sách hành động cụ thể")
         # Hiển thị các cột quan trọng để nhân viên nắm bắt nhanh
-        st.dataframe(high_risk_customers])
+        st.dataframe(high_risk_customers)
     
     with col2:
         st.subheader("📊 Thống kê giải pháp")
