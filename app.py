@@ -349,7 +349,6 @@ if uploaded_file is not None:
             high_risk_df = high_risk_df.apply(get_retention_offer, axis=1)
             
             # Hiển thị bảng hành động
-            st.dataframe(high_risk_df])
 
     # --- PHẦN 5: GENAI SIMULATION (SOẠN EMAIL) ---
     with tab3:
