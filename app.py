@@ -47,109 +47,113 @@ if uploaded_file is not None:
     st.dataframe(df[df["Churn_Score"] > 0.7])
 
     st.bar_chart(df["Churn_Score"])
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from io import StringIO
 
-# --- PHẦN 2: GIẢI PHÁP GIỮ CHÂN KHÁCH HÀNG (SOFTBANK RETENTION ACTION) ---
-st.markdown("---")
-st.title("🛡️ Chiến lược Giữ chân Khách hàng (SoftBank Action Center)")
-st.write("Hệ thống tự động đề xuất giải pháp dựa trên hành vi khách hàng và hệ sinh thái SoftBank.")
+# Thiết lập chế độ trang (tùy chọn)
+st.set_page_config(layout="wide")
 
-# 1. Lọc danh sách khách hàng rủi ro cao để xử lý
-# Ngưỡng 0.7 là khách hàng có xác suất rời mạng trên 70%
-high_risk_customers = df > 0.7].copy()
+# --- Mô phỏng Dữ liệu và Tiền xử lý  ---
+@st.cache_data
+def load_and_preprocess_data():
+    # Giả lập dữ liệu Telco Churn CSV 
+    data = {
+        'customerID':,
+        'gender': ['Female', 'Male', 'Male', 'Male', 'Female', 'Male', 'Male'],
+        'SeniorCitizen': ,
+        'Partner':,
+        'Dependents':,
+        'tenure': ,
+        'PhoneService':,
+        'MultipleLines': ['No phone service', 'No', 'No', 'No phone service', 'No', 'No phone service', 'No'],
+        'InternetService':,
+        'Contract':,
+        'MonthlyCharges': [29.85, 56.95, 53.85, 42.3, 70.7, 52.55, 20.25],
+        'TotalCharges': ['29.85', '1889.5', '108.15', '1840.75', '151.65', ' ', ' '], # Mô phỏng giá trị trống
+        'Churn':
+    }
+    df = pd.DataFrame(data)
 
-if high_risk_customers.empty:
-    st.success("Tuyệt vời! Hiện tại không có khách hàng nào trong nhóm rủi ro cao.")
-else:
-    st.warning(f"⚠️ Cảnh báo: Tìm thấy **{len(high_risk_customers)}** khách hàng có nguy cơ rời bỏ SoftBank.")
-
-    # 2. Xây dựng Logic Đề xuất Giải pháp (Recommendation Engine)
-    # Hàm này sẽ gán các ưu đãi cụ thể của SoftBank dựa trên đặc điểm khách hàng
-    def generate_softbank_offer(row):
-        offers =
-        
-        # Kịch bản A: Nhạy cảm về giá (Cước cao + Hợp đồng ngắn hạn)
-        # -> Đề xuất chuyển xuống thương hiệu giá rẻ hơn của SoftBank
-        if row['MonthlyCharges'] > 80 and row['Contract'] == 'Month-to-month':
-            offers.append("📉 Chuyển đổi sang **LINEMO** (20GB/tháng) hoặc **Y!mobile**")
-            offers.append("💰 Tặng 3,000 điểm **PayPay** nếu gia hạn")
-
-        # Kịch bản B: Khách hàng dùng Internet cáp quang (Fiber optic)
-        # -> Tăng tính gắn kết bằng gói Combo (Mobile + Điện + Net)
-        elif row == 'Fiber optic':
-            offers.append("🏠 Kích hoạt gói **Ouchi Wari** (Giảm giá Combo Điện/Net)")
-            offers.append("🎁 Tặng gói Yahoo! Premium miễn phí 6 tháng")
-
-        # Kịch bản C: Khách hàng gặp vấn đề kỹ thuật (Có gọi TechSupport)
-        # -> Cần chăm sóc con người (Human touch)
-        elif row == 'Yes':
-            offers.append("📞 **Priority Call:** CSKH gọi lại hỗ trợ kỹ thuật trong 1h")
-            offers.append("🔧 Kiểm tra thiết bị/SIM miễn phí tại SoftBank Shop")
-
-        # Kịch bản D: Khách hàng lâu năm (Tenure > 24 tháng)
-        # -> Tri ân lòng trung thành
-        elif row['tenure'] > 24:
-            offers.append("💎 Nâng hạng thành viên **SoftBank Premium**")
-            offers.append("🎟️ Tặng vé xem bóng chày (SoftBank Hawks)")
-
-        # Mặc định
-        else:
-            offers.append("📩 Gửi khảo sát hài lòng & Tặng Coupon 500 Yên")
-
-        return " + ".join(offers)
-
-    # Áp dụng logic vào DataFrame
-    with st.spinner('Đang phân tích hành vi và tạo đề xuất giữ chân...'):
-        high_risk_customers = high_risk_customers.apply(generate_softbank_offer, axis=1)
-
-    # 3. Hiển thị Dashboard hành động cho nhân viên
-    col1, col2 = st.columns([1, 2])
+    # Xử lý TotalCharges: Thay thế khoảng trắng bằng NaN và chuyển đổi sang số
+    df = df.replace(' ', np.nan).astype(float)
+    # Xử lý giá trị thiếu (Imputation - ví dụ: thay bằng giá trị trung bình)
+    df.fillna(df.mean(), inplace=True)
     
-    with col1:
-        st.subheader("📋 Danh sách hành động cụ thể")
-        # Hiển thị các cột quan trọng để nhân viên nắm bắt nhanh
-        st.dataframe(high_risk_customers])
+    # Mã hóa biến mục tiêu 'Churn'
+    df['Churn_Label'] = df['Churn'].apply(lambda x: 1 if x == 'Yes' else 0)
     
-    with col2:
-        st.subheader("📊 Thống kê giải pháp")
-        # Biểu đồ phân bố các loại giải pháp
-        # Lấy action đầu tiên trong chuỗi để thống kê
-        action_counts = high_risk_customers.apply(lambda x: x.split('+').strip()).value_counts()
-        st.bar_chart(action_counts)
+    # Chọn các đặc trưng để mã hóa (bao gồm cả các biến được phân tích)
+    categorical_features =
+    
+    # Lấy tên cột chỉ số (Tenure, Charges)
+    numerical_features =
 
-    # 4. Mô phỏng Gửi Email tự động (GenAI Simulation)
-    st.markdown("### 📧 Gửi Email Cá nhân hóa (GenAI Preview)")
-    st.write("Hệ thống tự động soạn thảo email dựa trên lý do rời mạng của từng khách hàng.")
+    # Xây dựng Pipeline cho tiền xử lý
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features),
+            ('num', 'passthrough', numerical_features)
+        ],
+        remainder='drop'
+    )
     
-    # Widget chọn khách hàng để demo
-    selected_cust_id = st.selectbox("Chọn ID khách hàng để xem trước Email:", high_risk_customers.head(10))
+    X = df.drop(, axis=1)
+    y = df['Churn_Label']
     
-    if selected_cust_id:
-        # Lấy thông tin khách hàng được chọn
-        cust_info = high_risk_customers == selected_cust_id].iloc
-        
-        # Template Email mô phỏng
-        email_content = f"""
-        **To:** {cust_info}@softbank.ne.jp
-        **Subject:** 🎁 Món quà đặc biệt dành riêng cho bạn từ SoftBank!
-        
-        Kính gửi Quý khách hàng,
-        
-        Cảm ơn bạn đã đồng hành cùng SoftBank trong suốt {cust_info['tenure']} tháng qua. 
-        Chúng tôi hiểu rằng bạn có thể đang cân nhắc về dịch vụ (Dự báo rủi ro: {cust_info:.1%}).
-        
-        Để tri ân và hỗ trợ bạn tốt hơn, SoftBank trân trọng gửi tặng bạn ưu đãi độc quyền:
-        
-        👉 **{cust_info}**
-        
-        Vui lòng mở ứng dụng **My SoftBank** hoặc liên kết ví **PayPay** để nhận ưu đãi này ngay hôm nay.
-        
-        Trân trọng,
-        Đội ngũ Chăm sóc Khách hàng SoftBank Corp.
-        """
-        
-        # Hiển thị nội dung email trong khung thông báo
-        st.info(email_content)
-        
-        # Nút giả lập gửi
-        if st.button(f"🚀 Gửi ưu đãi ngay cho {selected_cust_id}"):
-            st.success(f"Đã gửi email thành công đến {selected_cust_id}! Dữ liệu đã được cập nhật vào hệ thống CRM.")
+    # Tách tập huấn luyện (vì đây là ví dụ minh họa, không cần tách test/train nghiêm ngặt)
+    X_processed = preprocessor.fit_transform(X)
+    
+    # Lấy tên các đặc trưng sau khi mã hóa
+    cat_feature_names = preprocessor.named_transformers_['cat'].get_feature_names_out(categorical_features)
+    final_feature_names = list(cat_feature_names) + numerical_features
+    
+    return X_processed, y, final_feature_names
+
+X_data, y_labels, feature_names = load_and_preprocess_data()
+
+@st.cache_resource
+def train_model(X, y):
+    """Huấn luyện mô hình Random Forest cơ bản."""
+    # Khởi tạo và huấn luyện mô hình [13]
+    clf = RandomForestClassifier(n_estimators=100, random_state=42)
+    clf.fit(X, y)
+    return clf
+
+clf_model = train_model(X_data, y_labels)
+
+def plot_feature_importance(model, feature_names, top_n=10):
+    """Tính toán và trực quan hóa Gini Importance.[13]"""
+    importances = model.feature_importances_
+    feature_imp_df = pd.DataFrame({
+        'Feature': feature_names,
+        'Importance': importances
+    }).sort_values('Importance', ascending=False).head(top_n)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.barh(feature_imp_df['Feature'], feature_imp_df['Importance'], color='#f63366')
+    ax.set_xlabel('Điểm Quan trọng Gini (Gini Importance Score)')
+    ax.set_title(f'Top {top_n} Đặc trưng Quan trọng Dự đoán Churn')
+    ax.invert_yaxis()
+    st.pyplot(fig)
+
+# --- Giao diện Streamlit cho Feature Importance ---
+st.header("1. Phân tích Động lực Churn (AI Diagnostics)")
+st.subheader("Trực quan hóa Tầm quan trọng của Đặc trưng (Random Forest)")
+
+# Slider chọn số lượng đặc trưng hiển thị
+top_n_features = st.slider("Chọn số lượng đặc trưng quan trọng hiển thị", 5, len(feature_names), 10)
+
+plot_feature_importance(clf_model, feature_names, top_n_features)
+st.markdown("""
+Sự trực quan hóa này cho phép các nhà quản lý nhanh chóng xác định các yếu tố thúc đẩy mô hình dự đoán churn.
+Các đặc trưng có điểm Gini Importance cao nhất, như `tenure` và các biến liên quan đến `Contract`, 
+được xác nhận là các đòn bẩy chính trong mô hình phân loại (như đã giả định trong phân tích dữ liệu mẫu ).
+""")
