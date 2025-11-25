@@ -47,97 +47,113 @@ if uploaded_file is not None:
     st.dataframe(df[df["Churn_Score"] > 0.7])
 
     st.bar_chart(df["Churn_Score"])
-    import pandas as pd
+   import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, roc_auc_score
-import pickle
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from io import StringIO
 
-# --- 1. Tải và Làm sạch Dữ liệu ---
-def load_and_clean_data(file_path):
-    df = pd.read_csv(file_path)
-    
-    # Xử lý cột TotalCharges: chuyển sang số và điền NaN (từ khách hàng mới) bằng 0
-    df['TotalCharges'] = pd.to_numeric(df['TotalCharges'], errors='coerce')
-    df.dropna(subset=['TotalCharges'], inplace=True)
-    
-    # Loại bỏ customerID và cột 'gender' (vì ít tác động trong mô hình này)
-    df.drop(['customerID', 'gender'], axis=1, inplace=True) 
-    
-    return df
+# Thiết lập chế độ trang (tùy chọn)
+st.set_page_config(layout="wide")
 
-# --- 2. Tiền xử lý Dữ liệu (Encoding) ---
-def preprocess_data(df):
-    # Sao chép để tránh cảnh báo SettingWithCopyWarning
-    df_processed = df.copy()
+# --- Mô phỏng Dữ liệu và Tiền xử lý  ---
+@st.cache_data
+def load_and_preprocess_data():
+    # Giả lập dữ liệu Telco Churn CSV 
+    data = {
+        'customerID':,
+        'gender': ['Female', 'Male', 'Male', 'Male', 'Female', 'Male', 'Male'],
+        'SeniorCitizen': ,
+        'Partner':,
+        'Dependents':,
+        'tenure': ,
+        'PhoneService':,
+        'MultipleLines': ['No phone service', 'No', 'No', 'No phone service', 'No', 'No phone service', 'No'],
+        'InternetService':,
+        'Contract':,
+        'MonthlyCharges': [29.85, 56.95, 53.85, 42.3, 70.7, 52.55, 20.25],
+        'TotalCharges': ['29.85', '1889.5', '108.15', '1840.75', '151.65', ' ', ' '], # Mô phỏng giá trị trống
+        'Churn':
+    }
+    df = pd.DataFrame(data)
 
-    # Mã hóa nhị phân (Yes/No và SeniorCitizen)
-    binary_cols = ['Partner', 'Dependents', 'PhoneService', 'PaperlessBilling', 
-                   'OnlineSecurity', 'OnlineBackup', 'DeviceProtection', 'TechSupport', 
-                   'StreamingTV', 'StreamingMovies', 'Churn']
-    for col in binary_cols:
-        if col in df_processed.columns:
-            le = LabelEncoder()
-            # Xử lý trường hợp có 'No phone service' hoặc 'No internet service'
-            unique_vals = df_processed[col].unique()
-            if 'No phone service' in unique_vals:
-                df_processed[col] = df_processed[col].replace('No phone service', 'No')
-            if 'No internet service' in unique_vals:
-                df_processed[col] = df_processed[col].replace('No internet service', 'No')
-                
-            df_processed[col] = le.fit_transform(df_processed[col])
+    # Xử lý TotalCharges: Thay thế khoảng trắng bằng NaN và chuyển đổi sang số
+    df = df.replace(' ', np.nan).astype(float)
+    # Xử lý giá trị thiếu (Imputation - ví dụ: thay bằng giá trị trung bình)
+    df.fillna(df.mean(), inplace=True)
+    
+    # Mã hóa biến mục tiêu 'Churn'
+    df['Churn_Label'] = df['Churn'].apply(lambda x: 1 if x == 'Yes' else 0)
+    
+    # Chọn các đặc trưng để mã hóa (bao gồm cả các biến được phân tích)
+    categorical_features =
+    
+    # Lấy tên cột chỉ số (Tenure, Charges)
+    numerical_features =
 
-    # Mã hóa One-Hot cho các biến phân loại còn lại
-    categorical_cols = ['MultipleLines', 'InternetService', 'Contract', 'PaymentMethod']
-    df_processed = pd.get_dummies(df_processed, columns=categorical_cols, drop_first=True)
+    # Xây dựng Pipeline cho tiền xử lý
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features),
+            ('num', 'passthrough', numerical_features)
+        ],
+        remainder='drop'
+    )
     
-    return df_processed
+    X = df.drop(, axis=1)
+    y = df['Churn_Label']
+    
+    # Tách tập huấn luyện (vì đây là ví dụ minh họa, không cần tách test/train nghiêm ngặt)
+    X_processed = preprocessor.fit_transform(X)
+    
+    # Lấy tên các đặc trưng sau khi mã hóa
+    cat_feature_names = preprocessor.named_transformers_['cat'].get_feature_names_out(categorical_features)
+    final_feature_names = list(cat_feature_names) + numerical_features
+    
+    return X_processed, y, final_feature_names
 
-# --- 3. Huấn luyện Mô hình ---
-def train_model(df_processed):
-    # Chia dữ liệu
-    X = df_processed.drop('Churn', axis=1)
-    y = df_processed['Churn']
-    
-    # Chuẩn hóa biến số
-    numerical_cols = ['tenure', 'MonthlyCharges', 'TotalCharges']
-    scaler = StandardScaler()
-    X[numerical_cols] = scaler.fit_transform(X[numerical_cols])
-    
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-    
-    # Huấn luyện Random Forest Classifier (sử dụng class_weight để xử lý mất cân bằng lớp)
-    model = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=42, 
-                                   class_weight='balanced')
-    model.fit(X_train, y_train)
-    
-    # Đánh giá mô hình
-    y_pred_proba = model.predict_proba(X_test)[:, 1]
-    print(f"ROC AUC Score: {roc_auc_score(y_test, y_pred_proba):.4f}")
-    
-    return model, X.columns, scaler
+X_data, y_labels, feature_names = load_and_preprocess_data()
 
-# --- Thực thi và Lưu trữ ---
-if __name__ == '__main__':
-    # Đảm bảo file CSV đã được tải lên
-    file_path = 'WA_Fn-UseC_-Telco-Customer-Churn.csv' 
-    
-    df_clean = load_and_clean_data(file_path)
-    df_preprocessed = preprocess_data(df_clean)
-    
-    # Lưu lại DataFrame đã xử lý (cần cho Streamlit để dự đoán trên toàn bộ tập dữ liệu)
-    df_preprocessed.to_csv('processed_data.csv', index=False)
-    
-    model, features, scaler = train_model(df_preprocessed)
-    
-    # Lưu mô hình, các tên cột và scaler
-    with open('retention_model.pkl', 'wb') as file:
-        pickle.dump({
-            'model': model,
-            'features': features.tolist(),
-            'scaler': scaler
-        }, file)
-    
-    print("Huấn luyện mô hình và lưu file 'retention_model.pkl' thành công.")
+@st.cache_resource
+def train_model(X, y):
+    """Huấn luyện mô hình Random Forest cơ bản."""
+    # Khởi tạo và huấn luyện mô hình [13]
+    clf = RandomForestClassifier(n_estimators=100, random_state=42)
+    clf.fit(X, y)
+    return clf
+
+clf_model = train_model(X_data, y_labels)
+
+def plot_feature_importance(model, feature_names, top_n=10):
+    """Tính toán và trực quan hóa Gini Importance.[13]"""
+    importances = model.feature_importances_
+    feature_imp_df = pd.DataFrame({
+        'Feature': feature_names,
+        'Importance': importances
+    }).sort_values('Importance', ascending=False).head(top_n)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.barh(feature_imp_df['Feature'], feature_imp_df['Importance'], color='#f63366')
+    ax.set_xlabel('Điểm Quan trọng Gini (Gini Importance Score)')
+    ax.set_title(f'Top {top_n} Đặc trưng Quan trọng Dự đoán Churn')
+    ax.invert_yaxis()
+    st.pyplot(fig)
+
+# --- Giao diện Streamlit cho Feature Importance ---
+st.header("1. Phân tích Động lực Churn (AI Diagnostics)")
+st.subheader("Trực quan hóa Tầm quan trọng của Đặc trưng (Random Forest)")
+
+# Slider chọn số lượng đặc trưng hiển thị
+top_n_features = st.slider("Chọn số lượng đặc trưng quan trọng hiển thị", 5, len(feature_names), 10)
+
+plot_feature_importance(clf_model, feature_names, top_n_features)
+st.markdown("""
+Sự trực quan hóa này cho phép các nhà quản lý nhanh chóng xác định các yếu tố thúc đẩy mô hình dự đoán churn.
+Các đặc trưng có điểm Gini Importance cao nhất, như `tenure` và các biến liên quan đến `Contract`, 
+được xác nhận là các đòn bẩy chính trong mô hình phân loại (như đã giả định trong phân tích dữ liệu mẫu ).
+""")
