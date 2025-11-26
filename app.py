@@ -226,7 +226,6 @@ else:
 
         if st.button("🚀 Gửi Email Giữ Chân"):
             st.success(f"Đã gửi ưu đãi thành công tới khách hàng {selected_cust_id}!")
-
 import streamlit as st
 import pandas as pd
 import numpy as np
