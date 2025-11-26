@@ -226,113 +226,123 @@ else:
 
         if st.button("🚀 Gửi Email Giữ Chân"):
             st.success(f"Đã gửi ưu đãi thành công tới khách hàng {selected_cust_id}!")
-import streamlit as st
-import pandas as pd
-import matplotlib.pyplot as plt
-import numpy as np
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder, OneHotEncoder
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from io import StringIO
-
-# Thiết lập chế độ trang (tùy chọn)
-st.set_page_config(layout="wide")
-
-# --- Mô phỏng Dữ liệu và Tiền xử lý  ---
-@st.cache_data
-def load_and_preprocess_data():
-    # Giả lập dữ liệu Telco Churn CSV 
-    data = {
-        'customerID':,
-        'gender': ['Female', 'Male', 'Male', 'Male', 'Female', 'Male', 'Male'],
-        'SeniorCitizen': ,
-        'Partner':,
-        'Dependents':,
-        'tenure': ,
-        'PhoneService':,
-        'MultipleLines': ['No phone service', 'No', 'No', 'No phone service', 'No', 'No phone service', 'No'],
-        'InternetService':,
-        'Contract':,
-        'MonthlyCharges': [29.85, 56.95, 53.85, 42.3, 70.7, 52.55, 20.25],
-        'TotalCharges': ['29.85', '1889.5', '108.15', '1840.75', '151.65', ' ', ' '], # Mô phỏng giá trị trống
-        'Churn':
-    }
-    df = pd.DataFrame(data)
-
-    # Xử lý TotalCharges: Thay thế khoảng trắng bằng NaN và chuyển đổi sang số
-    df = df.replace(' ', np.nan).astype(float)
-    # Xử lý giá trị thiếu (Imputation - ví dụ: thay bằng giá trị trung bình)
-    df.fillna(df.mean(), inplace=True)
+# --- Hàm Mô phỏng Uplift Data và Plotting ---
+def generate_uplift_data(n_samples=1000):
+    """Mô phỏng dữ liệu Uplift Curve (giả định Uplift Score đã được tính toán)."""
+    np.random.seed(42)
+    # Mô phỏng Uplift Score (đã sắp xếp, với Persuadables ở top)
+    uplift_score = np.sort(np.random.rand(n_samples))[::-1]
     
-    # Mã hóa biến mục tiêu 'Churn'
-    df['Churn_Label'] = df['Churn'].apply(lambda x: 1 if x == 'Yes' else 0)
+    # Tạo Uplift tích lũy dựa trên giả định mô hình Uplift hoạt động
+    # Giả sử 20% đầu tiên là Persuadables và mang lại 80% tổng Uplift
+    persuadable_ratio = 0.20 
     
-    # Chọn các đặc trưng để mã hóa (bao gồm cả các biến được phân tích)
-    categorical_features =
-    
-    # Lấy tên cột chỉ số (Tenure, Charges)
-    numerical_features =
-
-    # Xây dựng Pipeline cho tiền xử lý
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features),
-            ('num', 'passthrough', numerical_features)
-        ],
-        remainder='drop'
+    # Mô phỏng tác động: cao cho 20% đầu, sau đó giảm dần
+    weighted_uplift = np.where(
+        uplift_score > np.percentile(uplift_score, 100 - (persuadable_ratio * 100)),
+        uplift_score * 5,  # Tác động lớn cho Persuadables
+        uplift_score * 0.1 # Tác động nhỏ cho các nhóm khác
     )
     
-    X = df.drop(, axis=1)
-    y = df['Churn_Label']
+    cumulative_uplift = np.cumsum(weighted_uplift)
+    # Chuẩn hóa Uplift để dễ trực quan hóa
+    cumulative_uplift = cumulative_uplift / cumulative_uplift.max() * 100 
     
-    # Tách tập huấn luyện (vì đây là ví dụ minh họa, không cần tách test/train nghiêm ngặt)
-    X_processed = preprocessor.fit_transform(X)
-    
-    # Lấy tên các đặc trưng sau khi mã hóa
-    cat_feature_names = preprocessor.named_transformers_['cat'].get_feature_names_out(categorical_features)
-    final_feature_names = list(cat_feature_names) + numerical_features
-    
-    return X_processed, y, final_feature_names
+    return pd.DataFrame({
+        'Ranked_Population_Percent': np.linspace(0, 100, n_samples),
+        'Cumulative_Uplift_Percentage': cumulative_uplift
+    })
 
-X_data, y_labels, feature_names = load_and_preprocess_data()
-
-@st.cache_resource
-def train_model(X, y):
-    """Huấn luyện mô hình Random Forest cơ bản."""
-    # Khởi tạo và huấn luyện mô hình [13]
-    clf = RandomForestClassifier(n_estimators=100, random_state=42)
-    clf.fit(X, y)
-    return clf
-
-clf_model = train_model(X_data, y_labels)
-
-def plot_feature_importance(model, feature_names, top_n=10):
-    """Tính toán và trực quan hóa Gini Importance.[13]"""
-    importances = model.feature_importances_
-    feature_imp_df = pd.DataFrame({
-        'Feature': feature_names,
-        'Importance': importances
-    }).sort_values('Importance', ascending=False).head(top_n)
-
+def plot_uplift_curve(uplift_df, cutoff_percent):
+    """Trực quan hóa Uplift Curve và Cutoff Point.[15, 20]"""
     fig, ax = plt.subplots(figsize=(10, 6))
-    ax.barh(feature_imp_df['Feature'], feature_imp_df['Importance'], color='#f63366')
-    ax.set_xlabel('Điểm Quan trọng Gini (Gini Importance Score)')
-    ax.set_title(f'Top {top_n} Đặc trưng Quan trọng Dự đoán Churn')
-    ax.invert_yaxis()
+    
+    # Đường cong Uplift Model
+    ax.plot(uplift_df, uplift_df['Cumulative_Uplift_Percentage'], 
+            label='Đường cong Mô hình Uplift (Giá trị Giữ chân)', color='#f63366', linewidth=3)
+    
+    # Đường cong ngẫu nhiên (Baseline)
+    ax.plot(uplift_df, uplift_df, 
+            linestyle='--', color='gray', label='Chiến dịch Ngẫu nhiên (Baseline)')
+
+    # Điểm cắt (Cutoff Point)
+    ax.axvline(cutoff_percent, color='blue', linestyle=':', label=f'Điểm Cắt Can thiệp ({cutoff_percent}%)')
+    
+    # Highlight vùng Persuadables (nếu điểm cắt hợp lý)
+    if cutoff_percent > 0:
+        cutoff_index = int(len(uplift_df) * (cutoff_percent / 100))
+        max_uplift = uplift_df['Cumulative_Uplift_Percentage'].iloc[cutoff_index]
+        ax.plot(cutoff_percent, max_uplift, 'o', color='blue', markersize=8)
+        ax.annotate(f'{max_uplift:.1f}% Uplift', 
+                    (cutoff_percent, max_uplift), 
+                    textcoords="offset points", 
+                    xytext=(5,-10), 
+                    ha='left')
+
+    ax.set_xlabel('Tỷ lệ Dân số Mục tiêu được Nhắm đến (Theo Điểm Uplift Score, %)')
+    ax.set_ylabel('Uplift Tích lũy Chuẩn hóa (%)')
+    ax.set_title('Tối ưu hóa Can thiệp Giữ chân Khách hàng bằng Uplift Modeling')
+    ax.legend()
+    ax.grid(True)
     st.pyplot(fig)
+    
+# --- Giao diện Streamlit cho Uplift/ROI ---
+st.header("2. Tối ưu hóa Chiến dịch Giữ chân (Uplift Modeling và ROI)")
 
-# --- Giao diện Streamlit cho Feature Importance ---
-st.header("1. Phân tích Động lực Churn (AI Diagnostics)")
-st.subheader("Trực quan hóa Tầm quan trọng của Đặc trưng (Random Forest)")
+col1, col2 = st.columns(2)
 
-# Slider chọn số lượng đặc trưng hiển thị
-top_n_features = st.slider("Chọn số lượng đặc trưng quan trọng hiển thị", 5, len(feature_names), 10)
+with col1:
+    cutoff_percentage = st.slider("Chọn Điểm Cắt Dân số Mục tiêu (Target Population Cutoff %)", 
+                                    0, 100, 20, step=5, help="Chọn tỷ lệ phần trăm dân số có Uplift Score cao nhất sẽ nhận được can thiệp giữ chân. Thường là 20% đầu tiên.")
+    
+    # Input tài chính cho ROI
+    avg_clv = st.number_input("Giá trị trọn đời khách hàng (CLV) trung bình ($)", value=5000)
+    avg_intervention_cost = st.number_input("Chi phí can thiệp trung bình/khách hàng ($)", value=150)
 
-plot_feature_importance(clf_model, feature_names, top_n_features)
-st.markdown("""
-Sự trực quan hóa này cho phép các nhà quản lý nhanh chóng xác định các yếu tố thúc đẩy mô hình dự đoán churn.
-Các đặc trưng có điểm Gini Importance cao nhất, như `tenure` và các biến liên quan đến `Contract`, 
-được xác nhận là các đòn bẩy chính trong mô hình phân loại (như đã giả định trong phân tích dữ liệu mẫu ).
+with col2:
+    # Mô phỏng dữ liệu Uplift
+    uplift_data = generate_uplift_data()
+    plot_uplift_curve(uplift_data, cutoff_percentage)
+
+# Tính toán ROI Mô phỏng (Đơn giản hóa cho mục đích minh họa)
+if cutoff_percentage > 0:
+    n_total_customers = 7043 # Giả định số lượng khách hàng trong dataset
+    
+    # Giả định: Uplift Model tìm ra 20% Persuadables trong 20% dân số mục tiêu (persuadables chiếm 4% tổng dân số)
+    # Giả định: Tác động giữ chân thực tế (Uplift Rate) trong nhóm Persuadables là 20%
+    persuadable_ratio = 0.20
+    targeted_customers_count = int(n_total_customers * (cutoff_percentage / 100))
+    
+    # Chỉ số giả định: Tỷ lệ khách hàng được giữ chân thực tế trong nhóm can thiệp (Persuadable Rate in Target Group)
+    simulated_retention_rate = (0.2 * (cutoff_percentage/100)) # 20% Uplift Rate giả định, nhân với tỷ lệ can thiệp
+    
+    # Số khách hàng được giữ chân do Uplift Model
+    customers_retained_uplift = int(targeted_customers_count * (simulated_retention_rate))
+    
+    # Lợi ích: Khách hàng được giữ chân * CLV
+    total_benefit = customers_retained_uplift * avg_clv
+    
+    # Chi phí: Số khách hàng được can thiệp * Chi phí can thiệp
+    total_cost = targeted_customers_count * avg_intervention_cost
+    
+    # ROI
+    net_financial_gain = total_benefit - total_cost
+    
+    st.subheader("Bảng Dự kiến Lợi ích Tài chính và ROI")
+    
+    Table_2_Simulation_ROI
+
+| **KPI Mô Phỏng** | **Giá trị** |
+|---|---|
+| Khách hàng mục tiêu được can thiệp (Cutoff Pop.) | {targeted_customers_count:,} |
+| Khách hàng được giữ chân hiệu quả (Uplift) | {customers_retained_uplift:,} |
+| Tổng Lợi ích tài chính (Gross Benefit) | ${total_benefit:,.2f} |
+| Tổng Chi phí Can thiệp | ${total_cost:,.2f} |
+| **Lợi ích Tài chính Ròng (Net Gain)** | **${net_financial_gain:,.2f}** |
+    
+    st.markdown("""
+Việc tối ưu hóa bằng Uplift Modeling đảm bảo rằng nguồn lực ($150/khách hàng trong ví dụ này) 
+chỉ được chi tiêu cho nhóm khách hàng có khả năng thay đổi quyết định lớn nhất. 
+Nếu không có mô hình Uplift, một chiến dịch ngẫu nhiên sẽ lãng phí ngân sách 
+cho nhóm Sure Things và có thể làm mất thêm khách hàng thuộc nhóm Do-not-Disturbs.
 """)
