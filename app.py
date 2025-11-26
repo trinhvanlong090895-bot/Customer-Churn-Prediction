@@ -405,3 +405,5 @@ if uploaded_file is not None:
     st.error("1. Tập trung vào Khách hàng Hợp đồng **'Month-to-month'**: Phân khúc này chiếm tỷ lệ rủi ro cao nhất. Cần thiết lập các chương trình khuyến mãi chuyển đổi (Migration offers) hấp dẫn để kéo họ sang hợp đồng dài hạn.")
     st.warning("2. Tối ưu hóa Thanh toán **'Electronic Check'**: Hình thức này luôn đi kèm với rủi ro cao. Softbank nên thúc đẩy các phương thức thanh toán tự động khác (Bank Transfer/Credit Card) bằng các ưu đãi để giảm sự phụ thuộc vào Electronic Check.")
     st.info("3. **Can thiệp Sớm vào Phí Hàng tháng (Monthly Charges):** Sử dụng danh sách khách hàng rủi ro để xác định những người có cước cao nhưng ít sử dụng dịch vụ giá trị gia tăng, từ đó đề xuất gói cước tối ưu hơn để giảm cảm giác 'bị đắt'.")
+import sys
+!{sys.executable} -m pip install streamlit
