@@ -226,6 +226,7 @@ else:
 
         if st.button("🚀 Gửi Email Giữ Chân"):
             st.success(f"Đã gửi ưu đãi thành công tới khách hàng {selected_cust_id}!")
+!pip install streamlit
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -236,21 +237,21 @@ import seaborn as sns
 # --- 1. Logic Gợi ý Giải pháp AI (Giải pháp Giữ chân) ---
 def suggest_retention_strategy(row):
     """
-    Hàm này đại diện cho logic nghiệp vụ sau khi AI dự đoán. 
+    Hàm này đại diện cho logic nghiệp vụ sau khi AI dự đoán.
     Nó đưa ra giải pháp giữ chân CÁ NHÂN HÓA dựa trên Churn Score và các đặc điểm rủi ro chính.
     """
-    score = row
+    score = row['Churn_Score'] # Access Churn_Score from the row
     # Sử dụng các cột thô từ DataFrame
-    contract = row.get('Contract', 'Month-to-month') 
+    contract = row.get('Contract', 'Month-to-month')
     charges = row.get('MonthlyCharges', 0)
     tenure = row.get('tenure', 0)
     internet = row.get('InternetService', 'No')
 
     # Logic kiểm tra sự tồn tại của Fiber Optic (từ cột InternetService thô)
     is_fiber = (internet == 'Fiber optic')
-    
+
     # LOGIC ĐỀ XUẤT GIẢI PHÁP
-    
+
     if score >= 0.75:
         # Nhóm RỦI RO CỰC CAO (Ưu tiên can thiệp bằng nhân viên)
         if contract == 'Month-to-month' and is_fiber:
@@ -261,7 +262,7 @@ def suggest_retention_strategy(row):
              return "Gói Bảo hiểm Thiết bị miễn phí 12 tháng + Thư xin lỗi cá nhân hóa. (Team Hỗ trợ)"
         else:
             return "Gói dịch vụ độc quyền Softbank/PayPay miễn phí 3 tháng. (Team Marketing)"
-            
+
     elif 0.5 <= score < 0.75:
         # Nhóm RỦI RO CAO (Sử dụng tự động hóa)
         if contract == 'Month-to-month':
@@ -270,9 +271,9 @@ def suggest_retention_strategy(row):
             return "Đề xuất nâng cấp lên Fiber với giá ưu đãi trong 6 tháng. (Email Marketing tự động)"
         else:
             return "Khảo sát ngắn CSAT về chất lượng dịch vụ hiện tại. (Pop-up trong ứng dụng)"
-            
+
     else:
-        # Nhóm RỦI RO THẤP (Theo dõi định kỳ)
+        # Nhóm RỦ RO THẤP (Theo dõi định kỳ)
         return "Theo dõi định kỳ 30 ngày. Gửi nội dung giá trị (How-to, mẹo sử dụng) để tăng gắn kết."
 
 # --- Bắt đầu Khung Streamlit của bạn ---
@@ -301,61 +302,83 @@ if uploaded_file is not None:
     df = pd.read_csv(uploaded_file)
     st.subheader("📄 Đầu vào Dữ liệu:")
     st.dataframe(df.head())
-    
+
     # ------------------------------------------------
     # 23-40: KHUNG XỬ LÝ VÀ DỰ ĐOÁN (CODE GỐC CỦA BẠN)
     # ------------------------------------------------
-    
-    # Chuyển đổi dữ liệu
-    df = pd.to_numeric(df, errors="coerce")
-    df = df.dropna()
-    
-    # Lưu lại CustomerID, Gender và các biến Categorical thô cần thiết trước khi mã hóa
-    # (Loại bỏ Gender vì nó không được dùng trong mô hình đã huấn luyện trong train_model.py)
-    df_temp = df.drop(, axis=1) 
-    
+
+    # Make a copy for processing to retain original df for potential other uses
+    df_for_processing = df.copy()
+
+    # Convert 'TotalCharges' to numeric, handling missing values
+    # Assuming 'TotalCharges' is the only column that might contain non-numeric data
+    # (e.g., spaces for new customers), and other numeric columns are already clean.
+    if 'TotalCharges' in df_for_processing.columns:
+        df_for_processing['TotalCharges'] = pd.to_numeric(df_for_processing['TotalCharges'], errors='coerce')
+
+    # Drop rows with NaNs (e.g., from 'TotalCharges' conversion or other missing data)
+    # It's important to keep track of the original indices if customerID is not unique
+    # or if we need to map back to the original `df`.
+    # For simplicity, we will drop NaNs and assume the index aligns.
+    df_for_processing.dropna(inplace=True)
+
+    # Store a version of the DataFrame that will contain results (customer details + churn score)
+    # This ensures we have customer details like Contract, MonthlyCharges, tenure, InternetService
+    # for the `suggest_retention_strategy` function.
+    results_df = df_for_processing.copy()
+
+    # Columns to drop from features used for prediction.
+    # Based on the comment, 'Gender' is not used. 'customerID' is an identifier.
+    # Other raw categorical features will be one-hot encoded.
+    columns_to_drop_from_features = ['customerID', 'gender'] # Add 'gender' as per comment
+    df_features = df_for_processing.drop(columns=columns_to_drop_from_features, errors='ignore')
+
     # Mã hóa One-Hot cho các biến phân loại để chuẩn bị cho mô hình
-    df_processed = pd.get_dummies(df_temp, drop_first=True)
-    
+    df_processed = pd.get_dummies(df_features, drop_first=True)
+
     # Đồng bộ với cột của mô hình
     missing_cols = set(feature_names) - set(df_processed.columns)
     for c in missing_cols:
         df_processed[c] = 0
     df_processed = df_processed[feature_names]
-    
+
     # Tỉ lệ
     X_scaled = scaler.transform(df_processed)
 
     # Dự đoán
     proba = model.predict_proba(X_scaled)[:, 1]
-    
-    # Gắn Churn Score vào DataFrame kết quả (df đã dropna)
-    df = proba 
-    
+
+    # Gắn Churn Score vào DataFrame kết quả
+    results_df['Churn_Score'] = proba
+
+
     # ------------------------------------------------
     # 41-48: HIỂN THỊ KẾT QUẢ DỰ ĐOÁN (CODE GỐC CỦA BẠN)
     # ------------------------------------------------
 
     st.subheader("🔍 Kết quả Dự đoán:")
-    st.dataframe(df.sort_values(by="Churn_Score", ascending=False).head(10))
-    
+    # Use results_df for display
+    st.dataframe(results_df.sort_values(by="Churn_Score", ascending=False).head(10))
+
     st.subheader("🔥 Khách hàng có nguy cơ cao (Churn > 0.7):")
-    # Thay thế st.dataframe cũ bằng st.dataframe mới để tích hợp cấu hình cột đẹp hơn
+    # Filter results_df directly
+    high_risk_customers_df = results_df[results_df['Churn_Score'] > 0.7].copy()
+
     st.dataframe(
-        df > 0.7]],
+        high_risk_customers_df,
         column_config={
              "Churn_Score": st.column_config.ProgressColumn("Churn Score", format="%.2f", min_value=0.0, max_value=1.0)
         },
         use_container_width=True
     )
-    
+
     # ------------------------------------------------
     # --- BỔ SUNG YÊU CẦU 1: PHÂN TÍCH ĐỘNG LỰC CHURN (FEATURE IMPORTANCE) ---
     # ------------------------------------------------
-    
+
     st.markdown("---")
     st.header("1. Phân Tích Động Lực Churn (Nguyên nhân Khách hàng Rời bỏ)")
-    
+
     # Lấy Feature Importance từ mô hình đã load
     importances = model.feature_importances_
     feature_imp_df = pd.DataFrame({
@@ -369,7 +392,7 @@ if uploaded_file is not None:
     ax.set_xlabel('Điểm Quan trọng')
     ax.set_ylabel('Đặc trưng Khách hàng')
     st.pyplot(fig)
-    # 
+    #
 
     st.markdown("""
     **Hướng Khắc phục Tổng quan dựa trên Phân tích Đặc trưng:**
@@ -377,28 +400,24 @@ if uploaded_file is not None:
     2. **Thời gian Gắn bó (`tenure`):** Khách hàng rất mới (tenure thấp) hoặc mới bắt đầu có rủi ro cao. **Giải pháp:** Tăng cường chương trình Onboarding/CSM chủ động trong 90 ngày đầu tiên để đảm bảo sự hài lòng với chất lượng mạng và hóa đơn.
     3. **Dịch vụ Fiber Optic:** Khách hàng trả phí cao có kỳ vọng cao hơn. **Giải pháp:** Áp dụng giám sát chủ động (proactive monitoring) để khắc phục các sự cố mạng tiềm ẩn trước khi khách hàng phàn nàn.[1]
     """)
-    
+
     # ------------------------------------------------
     # --- BỔ SUNG YÊU CẦU 2: GIẢI PHÁP CÁ NHÂN HÓA VÀ PHÂN TÍCH TÁC ĐỘNG ---
     # ------------------------------------------------
-    
+
     st.markdown("---")
     st.header("2. Giải Pháp Giữ Chân Cá Nhân Hóa (AI Retention Strategy)")
-    
-    # Áp dụng hàm gợi ý giải pháp vào DataFrame kết quả
-    # Đảm bảo cột Churn_Score đã được tạo ở dòng 40
-    df_result = df > risk_threshold].copy()
-    
+
     # Thiết lập ngưỡng rủi ro có thể điều chỉnh
-    risk_threshold = st.slider("Chọn Ngưỡng Churn Score Tối Thiểu để Can Thiệp:", 
+    risk_threshold = st.slider("Chọn Ngưỡng Churn Score Tối Thiểu để Can Thiệp:",
                       min_value=0.5, max_value=0.9, value=0.70, step=0.05)
-    
+
     # Lọc lại danh sách khách hàng rủi ro cao theo ngưỡng mới
-    high_risk_strategies = df_result >= risk_threshold].copy()
-    high_risk_strategies = high_risk_strategies.apply(suggest_retention_strategy, axis=1)
+    high_risk_strategies_df = results_df[results_df['Churn_Score'] >= risk_threshold].copy()
+    high_risk_strategies_df['Retention_Strategy'] = high_risk_strategies_df.apply(suggest_retention_strategy, axis=1)
 
     st.dataframe(
-        high_risk_strategies],
+        high_risk_strategies_df[['customerID', 'Churn_Score', 'Retention_Strategy']], # Display relevant columns
         height=300,
         use_container_width=True,
         column_config={
@@ -406,19 +425,19 @@ if uploaded_file is not None:
              "Retention_Strategy": st.column_config.TextColumn("Giải Pháp Giữ Chân Đề Xuất (AI)", width="large")
         }
     )
-    
+
     # Biểu đồ Phân bổ Giải pháp (Để hiểu cần phân bổ ngân sách cho loại chiến dịch nào)
     st.subheader("Phân bổ Tần suất các Giải pháp AI Đề xuất:")
-    
-    if not high_risk_strategies.empty:
-        strategy_counts = high_risk_strategies.apply(lambda x: x.split('(').strip()).value_counts().head(5)
-        
+
+    if not high_risk_strategies_df.empty:
+        # Extract just the strategy description before the parentheses
+        strategy_counts = high_risk_strategies_df['Retention_Strategy'].apply(lambda x: x.split('(')[0].strip()).value_counts().head(5)
+
         fig_strat, ax_strat = plt.subplots(figsize=(8, 4))
         strategy_counts.plot(kind='barh', ax=ax_strat, color='teal')
         ax_strat.set_title('Top 5 Loại Giải pháp cần ưu tiên')
         ax_strat.set_xlabel('Số lượng Khách hàng Mục tiêu')
         plt.gca().invert_yaxis()
         st.pyplot(fig_strat)
-        # 
     else:
         st.info("Không có khách hàng nào đạt ngưỡng rủi ro này để đề xuất giải pháp.")
