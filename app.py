@@ -248,28 +248,24 @@ def load_and_clean_data(file_path):
     le = LabelEncoder()
     df['Churn'] = le.fit_transform(df['Churn']) # Yes=1, No=0
     
-    # Loại bỏ customerID và gender (Gender thường ít có ý nghĩa dự đoán trong mô hình này)
+    # Loại bỏ customerID và gender 
     df.drop(['customerID', 'gender'], axis=1, inplace=True) 
     
     return df
 
 # --- 2. Định nghĩa Quy trình Tiền xử lý (Preprocessor) ---
 def create_preprocessor(df):
-    # Danh sách các cột
     categorical_cols = [col for col in df.columns if df[col].dtype == 'object']
     numerical_cols = ['tenure', 'MonthlyCharges', 'TotalCharges']
     
-    # Pipeline cho các cột số (Chuẩn hóa)
     numerical_transformer = Pipeline(steps=[
         ('scaler', StandardScaler())
     ])
     
-    # Pipeline cho các cột phân loại (One-Hot Encoding)
     categorical_transformer = Pipeline(steps=[
         ('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
     ])
     
-    # Kết hợp các bước xử lý
     preprocessor = ColumnTransformer(
         transformers=[
             ('num', numerical_transformer, numerical_cols),
@@ -277,7 +273,6 @@ def create_preprocessor(df):
         ],
         remainder='drop'
     )
-    
     return preprocessor, categorical_cols, numerical_cols
 
 # --- 3. Huấn luyện Mô hình Cuối cùng (Pipeline) ---
@@ -285,7 +280,6 @@ def train_full_pipeline(df):
     X = df.drop('Churn', axis=1)
     y = df['Churn']
     
-    # Tạo Preprocessor
     preprocessor, categorical_cols, numerical_cols = create_preprocessor(X)
     
     # Xây dựng Pipeline hoàn chỉnh
@@ -294,22 +288,17 @@ def train_full_pipeline(df):
         ('classifier', RandomForestClassifier(n_estimators=200, max_depth=8, random_state=42, class_weight='balanced'))
     ])
     
-    # Chia dữ liệu và huấn luyện
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-    full_pipeline.fit(X_train, y_train)
-    
-    # Đánh giá
-    y_pred_proba = full_pipeline.predict_proba(X_test)[:, 1]
-    print(f"ROC AUC Score của mô hình: {roc_auc_score(y_test, y_pred_proba):.4f}")
+    full_pipeline.fit(X, y)
     
     return full_pipeline, categorical_cols, numerical_cols, X.columns.tolist()
 
 # --- Thực thi và Lưu trữ ---
 if __name__ == '__main__':
+    # ĐƯỜNG DẪN CỐ ĐỊNH CHO MỤC ĐÍCH HUẤN LUYỆN
     file_path = 'WA_Fn-UseC_-Telco-Customer-Churn.csv' 
+    
     df_clean = load_and_clean_data(file_path)
     
-    # Huấn luyện toàn bộ Pipeline
     pipeline_model, categorical_cols, numerical_cols, original_features = train_full_pipeline(df_clean)
     
     # Lưu Pipeline và các biến cần thiết
@@ -322,4 +311,3 @@ if __name__ == '__main__':
         }, file)
     
     print("\n[THÀNH CÔNG] Đã lưu mô hình Pipeline hoàn chỉnh vào 'full_churn_pipeline.pkl'.")
-    print("Bây giờ bạn có thể chạy 'app.py' an toàn.")
