@@ -226,3 +226,100 @@ else:
 
         if st.button("🚀 Gửi Email Giữ Chân"):
             st.success(f"Đã gửi ưu đãi thành công tới khách hàng {selected_cust_id}!")
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, OneHotEncoder, LabelEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import roc_auc_score
+import pickle
+
+# --- 1. Tải và Làm sạch Dữ liệu ---
+def load_and_clean_data(file_path):
+    df = pd.read_csv(file_path)
+    
+    # Xử lý TotalCharges
+    df['TotalCharges'] = pd.to_numeric(df['TotalCharges'], errors='coerce')
+    df.dropna(subset=['TotalCharges'], inplace=True)
+    
+    # Mã hóa biến mục tiêu Churn
+    le = LabelEncoder()
+    df['Churn'] = le.fit_transform(df['Churn']) # Yes=1, No=0
+    
+    # Loại bỏ customerID và gender (Gender thường ít có ý nghĩa dự đoán trong mô hình này)
+    df.drop(['customerID', 'gender'], axis=1, inplace=True) 
+    
+    return df
+
+# --- 2. Định nghĩa Quy trình Tiền xử lý (Preprocessor) ---
+def create_preprocessor(df):
+    # Danh sách các cột
+    categorical_cols = [col for col in df.columns if df[col].dtype == 'object']
+    numerical_cols = ['tenure', 'MonthlyCharges', 'TotalCharges']
+    
+    # Pipeline cho các cột số (Chuẩn hóa)
+    numerical_transformer = Pipeline(steps=[
+        ('scaler', StandardScaler())
+    ])
+    
+    # Pipeline cho các cột phân loại (One-Hot Encoding)
+    categorical_transformer = Pipeline(steps=[
+        ('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
+    ])
+    
+    # Kết hợp các bước xử lý
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('num', numerical_transformer, numerical_cols),
+            ('cat', categorical_transformer, categorical_cols)
+        ],
+        remainder='drop'
+    )
+    
+    return preprocessor, categorical_cols, numerical_cols
+
+# --- 3. Huấn luyện Mô hình Cuối cùng (Pipeline) ---
+def train_full_pipeline(df):
+    X = df.drop('Churn', axis=1)
+    y = df['Churn']
+    
+    # Tạo Preprocessor
+    preprocessor, categorical_cols, numerical_cols = create_preprocessor(X)
+    
+    # Xây dựng Pipeline hoàn chỉnh
+    full_pipeline = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('classifier', RandomForestClassifier(n_estimators=200, max_depth=8, random_state=42, class_weight='balanced'))
+    ])
+    
+    # Chia dữ liệu và huấn luyện
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    full_pipeline.fit(X_train, y_train)
+    
+    # Đánh giá
+    y_pred_proba = full_pipeline.predict_proba(X_test)[:, 1]
+    print(f"ROC AUC Score của mô hình: {roc_auc_score(y_test, y_pred_proba):.4f}")
+    
+    return full_pipeline, categorical_cols, numerical_cols, X.columns.tolist()
+
+# --- Thực thi và Lưu trữ ---
+if __name__ == '__main__':
+    file_path = 'WA_Fn-UseC_-Telco-Customer-Churn.csv' 
+    df_clean = load_and_clean_data(file_path)
+    
+    # Huấn luyện toàn bộ Pipeline
+    pipeline_model, categorical_cols, numerical_cols, original_features = train_full_pipeline(df_clean)
+    
+    # Lưu Pipeline và các biến cần thiết
+    with open('full_churn_pipeline.pkl', 'wb') as file:
+        pickle.dump({
+            'pipeline': pipeline_model,
+            'categorical_cols': categorical_cols,
+            'numerical_cols': numerical_cols,
+            'original_features': original_features
+        }, file)
+    
+    print("\n[THÀNH CÔNG] Đã lưu mô hình Pipeline hoàn chỉnh vào 'full_churn_pipeline.pkl'.")
+    print("Bây giờ bạn có thể chạy 'app.py' an toàn.")
