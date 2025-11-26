@@ -236,21 +236,14 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import roc_auc_score
 import pickle
 
-# --- 1. Tải và Làm sạch Dữ liệu ---
+# --- 1. Tải và Làm sạch Dữ liệu (DÙNG CHO HUẤN LUYỆN) ---
 def load_and_clean_data(file_path):
     df = pd.read_csv(file_path)
-    
-    # Xử lý TotalCharges
     df['TotalCharges'] = pd.to_numeric(df['TotalCharges'], errors='coerce')
     df.dropna(subset=['TotalCharges'], inplace=True)
-    
-    # Mã hóa biến mục tiêu Churn
     le = LabelEncoder()
-    df['Churn'] = le.fit_transform(df['Churn']) # Yes=1, No=0
-    
-    # Loại bỏ customerID và gender 
+    df['Churn'] = le.fit_transform(df['Churn']) 
     df.drop(['customerID', 'gender'], axis=1, inplace=True) 
-    
     return df
 
 # --- 2. Định nghĩa Quy trình Tiền xử lý (Preprocessor) ---
@@ -258,13 +251,8 @@ def create_preprocessor(df):
     categorical_cols = [col for col in df.columns if df[col].dtype == 'object']
     numerical_cols = ['tenure', 'MonthlyCharges', 'TotalCharges']
     
-    numerical_transformer = Pipeline(steps=[
-        ('scaler', StandardScaler())
-    ])
-    
-    categorical_transformer = Pipeline(steps=[
-        ('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
-    ])
+    numerical_transformer = Pipeline(steps=[('scaler', StandardScaler())])
+    categorical_transformer = Pipeline(steps=[('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False))])
     
     preprocessor = ColumnTransformer(
         transformers=[
@@ -279,29 +267,27 @@ def create_preprocessor(df):
 def train_full_pipeline(df):
     X = df.drop('Churn', axis=1)
     y = df['Churn']
-    
     preprocessor, categorical_cols, numerical_cols = create_preprocessor(X)
     
-    # Xây dựng Pipeline hoàn chỉnh
     full_pipeline = Pipeline(steps=[
         ('preprocessor', preprocessor),
         ('classifier', RandomForestClassifier(n_estimators=200, max_depth=8, random_state=42, class_weight='balanced'))
     ])
-    
     full_pipeline.fit(X, y)
     
     return full_pipeline, categorical_cols, numerical_cols, X.columns.tolist()
 
 # --- Thực thi và Lưu trữ ---
 if __name__ == '__main__':
-    # ĐƯỜNG DẪN CỐ ĐỊNH CHO MỤC ĐÍCH HUẤN LUYỆN
     file_path = 'WA_Fn-UseC_-Telco-Customer-Churn.csv' 
-    
-    df_clean = load_and_clean_data(file_path)
-    
+    try:
+        df_clean = load_and_clean_data(file_path)
+    except FileNotFoundError:
+        print(f"LỖI: Không tìm thấy file dữ liệu tại đường dẫn cố định '{file_path}'. Vui lòng đặt file CSV vào cùng thư mục.")
+        exit()
+
     pipeline_model, categorical_cols, numerical_cols, original_features = train_full_pipeline(df_clean)
     
-    # Lưu Pipeline và các biến cần thiết
     with open('full_churn_pipeline.pkl', 'wb') as file:
         pickle.dump({
             'pipeline': pipeline_model,
