@@ -226,4 +226,116 @@ else:
 
         if st.button("🚀 Gửi Email Giữ Chân"):
             st.success(f"Đã gửi ưu đãi thành công tới khách hàng {selected_cust_id}!")
+# Install Streamlit if not already installed
+!pip install streamlit
 
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from io import StringIO
+
+# Thiết lập chế độ trang (tùy chọn)
+st.set_page_config(layout="wide")
+
+# --- Mô phỏng Dữ liệu và Tiền xử lý  ---
+@st.cache_data
+def load_and_preprocess_data():
+    # Giả lập dữ liệu Telco Churn CSV
+    data = {
+        'customerID': ['7590-VHVEG', '5575-GNVDE', '3668-QPYBK', '7795-CFOCW', '9237-HQITU', '9305-CDSKC', '2809-LSDNY'],
+        'gender': ['Female', 'Male', 'Male', 'Male', 'Female', 'Male', 'Male'],
+        'SeniorCitizen': [0, 0, 0, 0, 0, 0, 0],
+        'Partner': ['Yes', 'No', 'No', 'No', 'No', 'No', 'No'],
+        'Dependents': ['No', 'No', 'No', 'No', 'No', 'No', 'No'],
+        'tenure': [1, 34, 2, 45, 2, 8, 22],
+        'PhoneService': ['No', 'Yes', 'Yes', 'No', 'Yes', 'Yes', 'Yes'],
+        'MultipleLines': ['No phone service', 'No', 'No', 'No phone service', 'No', 'No phone service', 'No'],
+        'InternetService': ['DSL', 'DSL', 'DSL', 'DSL', 'Fiber optic', 'Fiber optic', 'DSL'],
+        'Contract': ['Month-to-month', 'One year', 'Month-to-month', 'One year', 'Month-to-month', 'Month-to-month', 'Two year'],
+        'MonthlyCharges': [29.85, 56.95, 53.85, 42.3, 70.7, 52.55, 20.25],
+        'TotalCharges': ['29.85', '1889.5', '108.15', '1840.75', '151.65', '405.35', '458.55'], # Mô phỏng giá trị trống
+        'Churn': ['No', 'No', 'Yes', 'No', 'Yes', 'Yes', 'No']
+    }
+    df = pd.DataFrame(data)
+
+    # Xử lý TotalCharges: Thay thế khoảng trắng bằng NaN và chuyển đổi sang số
+    df['TotalCharges'] = pd.to_numeric(df['TotalCharges'], errors='coerce')
+    # Xử lý giá trị thiếu (Imputation - ví dụ: thay bằng giá trị trung bình)
+    df.fillna(df.mean(numeric_only=True), inplace=True)
+
+    # Mã hóa biến mục tiêu 'Churn'
+    df['Churn_Label'] = df['Churn'].apply(lambda x: 1 if x == 'Yes' else 0)
+
+    # Chọn các đặc trưng để mã hóa (bao gồm cả các biến được phân tích)
+    categorical_features = ['gender', 'Partner', 'Dependents', 'PhoneService', 'MultipleLines', 'InternetService', 'Contract']
+
+    # Lấy tên cột chỉ số (Tenure, Charges)
+    numerical_features = ['tenure', 'MonthlyCharges', 'TotalCharges']
+
+    # Xây dựng Pipeline cho tiền xử lý
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features),
+            ('num', 'passthrough', numerical_features)
+        ],
+        remainder='drop'
+    )
+
+    X = df.drop(['customerID', 'Churn', 'Churn_Label'], axis=1) # Drop original Churn column and customerID
+    y = df['Churn_Label']
+
+    # Tách tập huấn luyện (vì đây là ví dụ minh họa, không cần tách test/train nghiêm ngặt)
+    X_processed = preprocessor.fit_transform(X)
+
+    # Lấy tên các đặc trưng sau khi mã hóa
+    cat_feature_names = preprocessor.named_transformers_['cat'].get_feature_names_out(categorical_features)
+    final_feature_names = list(cat_feature_names) + numerical_features
+
+    return X_processed, y, final_feature_names
+
+X_data, y_labels, feature_names = load_and_preprocess_data()
+
+@st.cache_resource
+def train_model(X, y):
+    """Huấn luyện mô hình Random Forest cơ bản."""
+    # Khởi tạo và huấn luyện mô hình [13]
+    clf = RandomForestClassifier(n_estimators=100, random_state=42)
+    clf.fit(X, y)
+    return clf
+
+clf_model = train_model(X_data, y_labels)
+
+def plot_feature_importance(model, feature_names, top_n=10):
+    """Tính toán và trực quan hóa Gini Importance.[13]"""
+    importances = model.feature_importances_
+    feature_imp_df = pd.DataFrame({
+        'Feature': feature_names,
+        'Importance': importances
+    }).sort_values('Importance', ascending=False).head(top_n)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.barh(feature_imp_df['Feature'], feature_imp_df['Importance'], color='#f63366')
+    ax.set_xlabel('Điểm Quan trọng Gini (Gini Importance Score)')
+    ax.set_title(f'Top {top_n} Đặc trưng Quan trọng Dự đoán Churn')
+    ax.invert_yaxis()
+    st.pyplot(fig)
+
+# --- Giao diện Streamlit cho Feature Importance ---
+st.header("1. Phân tích Động lực Churn (AI Diagnostics)")
+st.subheader("Trực quan hóa Tầm quan trọng của Đặc trưng (Random Forest)")
+
+# Slider chọn số lượng đặc trưng hiển thị
+top_n_features = st.slider("Chọn số lượng đặc trưng quan trọng hiển thị", 5, len(feature_names), 10)
+
+plot_feature_importance(clf_model, feature_names, top_n_features)
+st.markdown("""
+Sự trực quan hóa này cho phép các nhà quản lý nhanh chóng xác định các yếu tố thúc đẩy mô hình dự đoán churn.
+Các đặc trưng có điểm Gini Importance cao nhất, như `tenure` và các biến liên quan đến `Contract`,
+được xác nhận là các đòn bẩy chính trong mô hình phân loại (như đã giả định trong phân tích dữ liệu mẫu ).
+""")
